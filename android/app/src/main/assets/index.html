@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skylight Lite - Overhead Flight Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Fullscreen Projection Canvas -->
+  <canvas id="projection-canvas"></canvas>
+
+  <!-- Connection Status Overlay (top-left) -->
+  <div id="status-bar" class="hud-panel">
+    <div class="status-indicator">
+      <span class="indicator-dot connected" id="api-indicator"></span>
+      <span class="indicator-text" id="api-status">Server Connected</span>
+    </div>
+    <div class="location-name" id="display-location">Loading Location...</div>
+    <div class="flight-count" id="display-count">0 Flights Overhead</div>
+  </div>
+
+  <!-- Calibration Help Indicator (top-right) -->
+  <div id="help-trigger" class="hud-panel interactive" onclick="toggleControlPanel()">
+    <span class="help-icon">⚙️</span>
+    <span class="help-text">Press <strong>C</strong> to Configure</span>
+  </div>
+
+  <!-- Main Calibration & Settings Control Panel -->
+  <div id="control-panel" class="control-panel-overlay hidden">
+    <div class="control-panel-content">
+      <div class="panel-header">
+        <h2>Skylight Control Center</h2>
+        <button class="close-btn" onclick="toggleControlPanel()">×</button>
+      </div>
+
+      <div class="panel-sections">
+        <!-- Section 1: Calibration -->
+        <div class="panel-section">
+          <h3>📐 Projector Calibration</h3>
+          <div class="control-group">
+            <label>Scale (Size): <span id="val-scale" class="value-display">1.0x</span></label>
+            <div class="slider-row">
+              <input type="range" id="input-scale" min="0.5" max="3" step="0.05" value="1.0">
+              <button onclick="resetSetting('scale')">Reset</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Rotation: <span id="val-rotation" class="value-display">0°</span></label>
+            <div class="slider-row">
+              <input type="range" id="input-rotation" min="-180" max="180" step="1" value="0">
+              <button onclick="resetSetting('rotation')">Reset</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Offset X (Left/Right): <span id="val-offsetX" class="value-display">0px</span></label>
+            <div class="slider-row">
+              <input type="range" id="input-offsetX" min="-500" max="500" step="5" value="0">
+              <button onclick="resetSetting('offsetX')">Reset</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Offset Y (Up/Down): <span id="val-offsetY" class="value-display">0px</span></label>
+            <div class="slider-row">
+              <input type="range" id="input-offsetY" min="-500" max="500" step="5" value="0">
+              <button onclick="resetSetting('offsetY')">Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Display Filters -->
+        <div class="panel-section">
+          <h3>👁️ Display Options</h3>
+          
+          <div class="toggle-group">
+            <label class="switch">
+              <input type="checkbox" id="toggle-constellations" checked>
+              <span class="slider round"></span>
+              <span class="toggle-label">Constellation Lines</span>
+            </label>
+          </div>
+
+          <div class="toggle-group">
+            <label class="switch">
+              <input type="checkbox" id="toggle-starnames" checked>
+              <span class="slider round"></span>
+              <span class="toggle-label">Star Labels</span>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="switch">
+              <input type="checkbox" id="toggle-stars" checked>
+              <span class="slider round"></span>
+              <span class="toggle-label">Star Dots (Background)</span>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="switch">
+              <input type="checkbox" id="toggle-grid" checked>
+              <span class="slider round"></span>
+              <span class="toggle-label">Compass / Elevation Grid</span>
+            </label>
+          </div>
+
+          <div class="toggle-group">
+            <label class="switch">
+              <input type="checkbox" id="toggle-trails" checked>
+              <span class="slider round"></span>
+              <span class="toggle-label">Flight Trail History</span>
+            </label>
+          </div>
+
+          <div class="toggle-group">
+            <label class="switch">
+              <input type="checkbox" id="toggle-flightdetails" checked>
+              <span class="slider round"></span>
+              <span class="toggle-label">Flight Labels (Altitude/Callsign)</span>
+            </label>
+          </div>
+
+          <div class="control-group" style="margin-top: 15px;">
+            <label>Min Elevation Filter: <span id="val-elevation" class="value-display">5°</span></label>
+            <div class="slider-row">
+              <input type="range" id="input-elevation" min="0" max="45" step="1" value="5">
+            </div>
+            <small class="help-note">Hides planes near the horizon that may be blocked by trees/buildings.</small>
+          </div>
+        </div>
+
+        <!-- Section 3: Aesthetics -->
+        <div class="panel-section">
+          <h3>🎨 Aesthetics & Theme</h3>
+          
+          <div class="control-group">
+            <label>Color Theme</label>
+            <select id="theme-selector">
+              <option value="classic">Starry Night (Classic)</option>
+              <option value="radar">Tactical Radar (Amber/Green)</option>
+              <option value="mono">High Contrast (White on Black)</option>
+              <option value="nebula">Deep Space Nebula</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label>Brightness: <span id="val-brightness" class="value-display">100%</span></label>
+            <input type="range" id="input-brightness" min="20" max="150" step="5" value="100">
+          </div>
+
+          <div class="keyboard-shorts">
+            <h4>Keyboard Shortcuts</h4>
+            <ul>
+              <li><kbd>C</kbd> - Toggle control panel</li>
+              <li><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> - Shift position</li>
+              <li><kbd>+</kbd> <kbd>-</kbd> - Scale canvas size</li>
+              <li><kbd>[</kbd> <kbd>]</kbd> - Rotate canvas</li>
+              <li><kbd>F</kbd> - Toggle Fullscreen mode</li>
+              <li><kbd>R</kbd> - Reset calibration settings</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Section 4: Standalone Coordinates -->
+        <div class="panel-section" id="section-standalone">
+          <h3>📍 Standalone Coordinates</h3>
+          <p class="help-note" style="margin-bottom: 5px; font-size: 0.8rem; color: #60a5fa;" id="standalone-status-label">Active: Using Local Server Settings</p>
+          
+          <div class="control-group" style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
+            <label>Connection Mode</label>
+            <select id="mode-selector" onchange="toggleModeSelect()" style="background: rgba(59, 130, 246, 0.15); border: 1px solid #3b82f6; border-radius: 8px; color: #60a5fa; padding: 8px 12px; outline: none; font-family: var(--font-ui); font-size: 0.9rem; font-weight: 600; cursor: pointer; width: 100%;">
+              <option value="server">Connect to Mac Server</option>
+              <option value="standalone">Direct API Mode (Standalone)</option>
+            </select>
+          </div>
+          
+          <div class="control-group">
+            <label>Location Name</label>
+            <input type="text" id="input-loc-name" value="Healdsburg, CA" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); padding: 8px 12px; outline: none; font-family: var(--font-ui); font-size: 0.9rem;">
+          </div>
+          <div class="control-group">
+            <label>Latitude</label>
+            <input type="number" id="input-loc-lat" step="0.000001" value="38.639917" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); padding: 8px 12px; outline: none; font-family: var(--font-hud); font-size: 0.9rem;">
+          </div>
+          <div class="control-group">
+            <label>Longitude</label>
+            <input type="number" id="input-loc-lon" step="0.000001" value="-122.866824" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); padding: 8px 12px; outline: none; font-family: var(--font-hud); font-size: 0.9rem;">
+          </div>
+          <div class="control-group">
+            <label>Radius (km)</label>
+            <input type="number" id="input-loc-radius" step="1" value="50" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); padding: 8px 12px; outline: none; font-family: var(--font-hud); font-size: 0.9rem;">
+          </div>
+          
+          <button id="btn-save-location" style="background: #3b82f6; border: none; color: white; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-family: var(--font-ui);" onclick="saveStandaloneCoordinates()">Save & Apply</button>
+        </div>
+      </div>
+
+      <div class="panel-footer">
+        <div class="coordinates-info">
+          <span>Lat: <strong id="geo-lat">--</strong></span>
+          <span>Lon: <strong id="geo-lon">--</strong></span>
+          <span>Radius: <strong id="geo-radius">--</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TV Settings Sidebar Overlay (Navigable via D-pad remote control) -->
+  <div id="tv-settings-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 360px; height: 100%; background: rgba(10, 16, 44, 0.92); border-right: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 10px 0 30px rgba(0, 0, 0, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 10000; font-family: 'Outfit', sans-serif; color: white; padding: 30px 20px; box-sizing: border-box; flex-direction: column;">
+    <h2 style="margin: 0 0 5px 0; font-size: 1.4rem; color: #60a5fa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Projector Settings</h2>
+    <p style="margin: 0 0 25px 0; font-size: 0.8rem; color: #94a3b8; line-height: 1.2;">Use D-pad (Up/Down to select, Left/Right to adjust values, OK/Menu to close)</p>
+    <div id="tv-menu-list" style="flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+      <!-- Menu items injected dynamically by JS -->
+    </div>
+    <div style="margin-top: auto; font-size: 0.8rem; color: #60a5fa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; text-align: center; font-weight: 600;">
+      Press MENU or OK to Toggle Menu
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

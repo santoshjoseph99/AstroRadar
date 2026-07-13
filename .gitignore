@@ -1,0 +1,22 @@
+# Dependency directories
+node_modules/
+
+# Environment variables (contains private observer coordinates)
+.env
+
+# MacOS system files
+.DS_Store
+
+# Android build outputs & local config
+android/.gradle/
+android/local.properties
+android/.idea/workspace.xml
+android/.idea/libraries/
+android/.idea/gradle.xml
+android/.idea/misc.xml
+android/.idea/modules.xml
+android/build/
+android/app/build/
+android/capture/
+*.apk
+*.aar
