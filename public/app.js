@@ -1954,9 +1954,9 @@ let focusState = {
   durationMs: 15000 // 15 seconds spotlight tracking window
 };
 
-// Trigger every 2 minutes (120 seconds) in production
-const FOCUS_TRIGGER_INTERVAL_MS = 2 * 60 * 1000;
-let lastFocusCheckTime = Date.now();
+// Trigger check interval: 10 seconds for dev/testing (will check/zoom frequently)
+const FOCUS_TRIGGER_INTERVAL_MS = 10 * 1000;
+let lastFocusCheckTime = Date.now() - FOCUS_TRIGGER_INTERVAL_MS + 2000; // Trigger 2 seconds after load
 
 function manageSpotlight(now) {
   // Sync dynamic render coordinates to calibration offsets if not initialized
@@ -1982,10 +1982,13 @@ function manageSpotlight(now) {
       
       // Toast notification overlay
       showNotification(`TARGET DETECTED: ${targetFlight.callsign || 'UNKNOWN'} (${targetFlight.type || 'N/A'})`);
+      
+      // Reset trigger check cooldown to 10 seconds
+      lastFocusCheckTime = now;
+    } else {
+      // No active aircraft found. Try again in 3 seconds.
+      lastFocusCheckTime = now - FOCUS_TRIGGER_INTERVAL_MS + 3000;
     }
-    
-    // Reset trigger check cooldown to 2 minutes
-    lastFocusCheckTime = now;
   }
 
   // Camera Zoom & Pan Interpolation
