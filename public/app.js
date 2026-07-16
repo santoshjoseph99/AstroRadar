@@ -1932,7 +1932,7 @@ let focusState = {
   active: false,
   targetHex: null,
   startTime: 0,
-  durationMs: 12000 // 12 seconds spotlight tracking window
+  durationMs: 15000 // 15 seconds spotlight tracking window
 };
 
 let lastFocusCheckTime = Date.now();
