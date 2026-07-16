@@ -153,7 +153,8 @@ let calibration = {
   showStarNames: false,
   showGrid: true,
   showTrails: true,
-  showDetails: true
+  showDetails: true,
+  showSpotlight: true
 };
 
 const isStandalone = window.location.protocol === 'file:' || 
@@ -213,6 +214,7 @@ function syncSettingsToUI() {
   document.getElementById('toggle-grid').checked = calibration.showGrid;
   document.getElementById('toggle-trails').checked = calibration.showTrails;
   document.getElementById('toggle-flightdetails').checked = calibration.showDetails;
+  document.getElementById('toggle-spotlight').checked = calibration.showSpotlight;
 
   // Sync value text displays
   document.getElementById('val-scale').textContent = `${calibration.scale.toFixed(2)}x`;
@@ -311,6 +313,11 @@ function setupListeners() {
 
   document.getElementById('toggle-flightdetails').addEventListener('change', (e) => {
     calibration.showDetails = e.target.checked;
+    saveSettings();
+  });
+
+  document.getElementById('toggle-spotlight').addEventListener('change', (e) => {
+    calibration.showSpotlight = e.target.checked;
     saveSettings();
   });
 
@@ -436,7 +443,8 @@ function setupListeners() {
           showStarNames: false,
           showGrid: true,
           showTrails: true,
-          showDetails: true
+          showDetails: true,
+          showSpotlight: true
         };
         syncSettingsToUI();
         saveSettings();
@@ -658,6 +666,11 @@ function getThemeStyles() {
   return styles;
 }
 
+// Dynamic rendering variables interpolated smoothly for Focus/Spotlight transitions
+let renderScale = null;
+let renderOffsetX = null;
+let renderOffsetY = null;
+
 /**
  * Projects a point from Alt/Az coordinates onto the 2D canvas.
  * Applies center offsets, rotation, and scaling calibrated for the projector.
@@ -665,6 +678,13 @@ function getThemeStyles() {
 function getCanvasCoordinates(alt, az, centerX, centerY, radiusPixels) {
   // If alt is negative, it's below the horizon (not rendered)
   if (alt < 0) return null;
+
+  // Initialize render coordinates to match current user calibration
+  if (renderScale === null) {
+    renderScale = calibration.scale;
+    renderOffsetX = calibration.offsetX;
+    renderOffsetY = calibration.offsetY;
+  }
 
   // Zenith (alt=90) maps to center (distance=0)
   // Horizon (alt=0) maps to outer boundary (distance=radiusPixels)
@@ -685,9 +705,11 @@ function getCanvasCoordinates(alt, az, centerX, centerY, radiusPixels) {
   const rotX = relX * Math.cos(rotRad) - relY * Math.sin(rotRad);
   const rotY = relX * Math.sin(rotRad) + relY * Math.cos(rotRad);
 
-  // Apply Calibration Scale and Offsets
-  const finalX = centerX + (rotX * calibration.scale) + calibration.offsetX;
-  const finalY = centerY + (rotY * calibration.scale) + calibration.offsetY;
+  // Apply Dynamic Render Scale and Offsets
+  const finalX = centerX + (rotX * renderScale) + renderOffsetX;
+  const finalY = centerY + (rotY * renderScale) + renderOffsetY;
+
+  return { x: finalX, y: finalY };
 
   return { x: finalX, y: finalY };
 }
@@ -934,6 +956,10 @@ function draw() {
   const height = canvas.height;
   
   const styles = getThemeStyles();
+  const now = Date.now();
+  
+  // Update spotlight camera transitions and panning engine
+  manageSpotlight(now);
 
   // Clear canvas
   ctx.fillStyle = styles.bg;
@@ -955,11 +981,11 @@ function draw() {
     // Draw Elevation Circles (Horizon: 0°, 30°, 60°)
     const elevations = [0, 30, 60];
     elevations.forEach(elev => {
-      const radius = baseRadius * (90 - elev) / 90 * calibration.scale;
+      const radius = baseRadius * (90 - elev) / 90 * renderScale;
       
       ctx.beginPath();
       // Apply offset to center circles
-      ctx.arc(centerX + calibration.offsetX, centerY + calibration.offsetY, radius, 0, 2 * Math.PI);
+      ctx.arc(centerX + renderOffsetX, centerY + renderOffsetY, radius, 0, 2 * Math.PI);
       ctx.stroke();
 
       // Label elevation circles (only at True North)
@@ -1049,7 +1075,8 @@ function draw() {
   // ----------------------------------------------------
   // DRAW STARS
   // ----------------------------------------------------
-  if (calibration.showStars) {
+  // Force background stars and constellations ON if we are currently target locked
+  if (calibration.showStars || (focusState.active && calibration.showSpotlight)) {
     STARS.forEach(star => {
       const coords = starPositions[star.id];
       if (!coords) return;
@@ -1073,7 +1100,7 @@ function draw() {
       ctx.fill();
 
       // Star label
-      if (calibration.showStarNames && star.mag < 2.5) { // Only label brighter stars to avoid clutter
+      if ((calibration.showStarNames || (focusState.active && calibration.showSpotlight)) && star.mag < 2.5) { // Only label brighter stars to avoid clutter
         ctx.fillStyle = styles.starText;
         ctx.font = '10px ' + varName('font-ui');
         ctx.textAlign = 'left';
@@ -1260,6 +1287,44 @@ function draw() {
 
     ctx.restore();
 
+    // Draw tactical HUD bracket corners around the active target spotlight
+    if (focusState.active && focusState.targetHex === hex && calibration.showSpotlight) {
+      ctx.strokeStyle = '#ef4444'; // Flashing neon red alert
+      ctx.lineWidth = 1.5;
+      const r = 16 * altFactor;
+      
+      ctx.beginPath();
+      // Top-Left corner
+      ctx.moveTo(flight.x - r, flight.y - r + 5);
+      ctx.lineTo(flight.x - r, flight.y - r);
+      ctx.lineTo(flight.x - r + 5, flight.y - r);
+      
+      // Top-Right corner
+      ctx.moveTo(flight.x + r - 5, flight.y - r);
+      ctx.lineTo(flight.x + r, flight.y - r);
+      ctx.lineTo(flight.x + r, flight.y - r + 5);
+      
+      // Bottom-Left corner
+      ctx.moveTo(flight.x - r, flight.y + r - 5);
+      ctx.lineTo(flight.x - r, flight.y + r);
+      ctx.lineTo(flight.x - r + 5, flight.y + r);
+      
+      // Bottom-Right corner
+      ctx.moveTo(flight.x + r - 5, flight.y + r);
+      ctx.lineTo(flight.x + r, flight.y + r);
+      ctx.lineTo(flight.x + r, flight.y + r - 5);
+      ctx.stroke();
+
+      // Blinking TARGET LOCK text
+      if (Math.floor(now / 300) % 2 === 0) {
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 9px ' + varName('font-hud');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('TARGET LOCK', flight.x, flight.y - r - 6);
+      }
+    }
+
     // Draw labels (Details: Callsign, Type, Route, Altitude, Speed)
     if (calibration.showDetails) {
       const labelOffset = 12;
@@ -1329,6 +1394,9 @@ function draw() {
       });
     }
   });
+
+  // Render active toast notifications on top of screen
+  drawNotifications();
 
   // Request next frame
   requestAnimationFrame(draw);
@@ -1751,6 +1819,7 @@ const tvMenuItems = [
   { id: 'brightness', label: 'Brightness', type: 'numeric', min: 20, max: 150, step: 5, format: v => `${v}%` },
   { id: 'theme', label: 'Theme', type: 'list', options: ['classic', 'radar', 'mono', 'nebula'], labels: ['Starry Night', 'Tactical Radar', 'High Contrast', 'Deep Space'] },
   { id: 'showDetails', label: 'Flight Labels', type: 'toggle' },
+  { id: 'showSpotlight', label: 'Spotlight Mode', type: 'toggle' },
   { id: 'showStars', label: 'Star Background', type: 'toggle' },
   { id: 'showConstellations', label: 'Constellations', type: 'toggle' },
   { id: 'showStarNames', label: 'Star Names', type: 'toggle' },
@@ -1854,4 +1923,142 @@ function adjustTvSetting(item, direction) {
     syncSettingsToUI();
   }
   renderTvMenu();
+}
+
+// ----------------------------------------------------
+// DYNAMIC AUTOPILOT SPOTLIGHT ENGINE
+// ----------------------------------------------------
+let focusState = {
+  active: false,
+  targetHex: null,
+  startTime: 0,
+  durationMs: 12000 // 12 seconds spotlight tracking window
+};
+
+let lastFocusCheckTime = Date.now();
+// Trigger every 2.5 minutes (150 seconds)
+const FOCUS_TRIGGER_INTERVAL_MS = 2.5 * 60 * 1000;
+
+function manageSpotlight(now) {
+  // Sync dynamic render coordinates to calibration offsets if not initialized
+  if (renderScale === null) {
+    renderScale = calibration.scale;
+    renderOffsetX = calibration.offsetX;
+    renderOffsetY = calibration.offsetY;
+  }
+
+  // Check if we should trigger a new spotlight target lock
+  if (!focusState.active && calibration.showSpotlight && (now - lastFocusCheckTime > FOCUS_TRIGGER_INTERVAL_MS)) {
+    const activeKeys = Object.keys(interpolatedFlights);
+    if (activeKeys.length > 0) {
+      // Pick a random plane currently in range
+      const targetHex = activeKeys[Math.floor(Math.random() * activeKeys.length)];
+      const targetFlight = interpolatedFlights[targetHex];
+      
+      focusState.active = true;
+      focusState.targetHex = targetHex;
+      focusState.startTime = now;
+      
+      console.log(`[Spotlight] Target locked: ${targetFlight.callsign || targetHex}`);
+      
+      // Toast notification overlay
+      showNotification(`TARGET DETECTED: ${targetFlight.callsign || 'UNKNOWN'} (${targetFlight.type || 'N/A'})`);
+    }
+    // Update interval check timer
+    lastFocusCheckTime = now;
+  }
+
+  // Camera Zoom & Pan Interpolation
+  if (focusState.active && calibration.showSpotlight) {
+    const elapsed = now - focusState.startTime;
+    const targetFlight = interpolatedFlights[focusState.targetHex];
+
+    if (!targetFlight || elapsed > focusState.durationMs) {
+      focusState.active = false;
+      focusState.targetHex = null;
+      console.log("[Spotlight] Target tracking lost or window timeout. Zooming out.");
+    } else {
+      // Calculate plane relative position
+      const { bearing, distanceKm } = getBearingAndDistance(
+        config.latitude, 
+        config.longitude, 
+        targetFlight.lat, 
+        targetFlight.lon
+      );
+      
+      const elev = getFlightElevation(targetFlight.alt, distanceKm);
+      const baseRadius = Math.min(canvas.width, canvas.height) * 0.45;
+      const dist = baseRadius * (90 - elev) / 90;
+      const angleRad = (bearing - 90) * Math.PI / 180;
+      
+      const relX = dist * Math.cos(angleRad);
+      const relY = dist * Math.sin(angleRad);
+      
+      // Apply rotation matching our calibration
+      const rotRad = calibration.rotation * Math.PI / 180;
+      const rotX = relX * Math.cos(rotRad) - relY * Math.sin(rotRad);
+      const rotY = relX * Math.sin(rotRad) + relY * Math.cos(rotRad);
+
+      // Target Scale: Zoom in by 2.2x of user preferred base scale
+      const targetScale = calibration.scale * 2.2;
+      // Centered at screen center, so offsets must negate rotation coordinates
+      const targetOffsetX = -rotX * targetScale;
+      const targetOffsetY = -rotY * targetScale;
+
+      // Linear interpolation (lerp) towards spotlight coordinates
+      renderScale += (targetScale - renderScale) * 0.05;
+      renderOffsetX += (targetOffsetX - renderOffsetX) * 0.05;
+      renderOffsetY += (targetOffsetY - renderOffsetY) * 0.05;
+    }
+  } else {
+    // Smoothly pan camera back out to normal calibration settings
+    renderScale += (calibration.scale - renderScale) * 0.05;
+    renderOffsetX += (calibration.offsetX - renderOffsetX) * 0.05;
+    renderOffsetY += (calibration.offsetY - renderOffsetY) * 0.05;
+  }
+}
+
+// Toast notification helper
+let activeNotification = null;
+let notificationTime = 0;
+
+function showNotification(text) {
+  activeNotification = text;
+  notificationTime = Date.now();
+}
+
+function drawNotifications() {
+  if (!activeNotification) return;
+  const elapsed = Date.now() - notificationTime;
+  if (elapsed > 4000) { // Display for 4 seconds
+    activeNotification = null;
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(10, 16, 44, 0.9)';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.2;
+  
+  const textWidth = ctx.measureText(activeNotification).width + 50;
+  const w = Math.max(300, textWidth);
+  const h = 42;
+  const x = canvas.width / 2 - w / 2;
+  const y = 30;
+  
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, 8);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.fill();
+  ctx.stroke();
+  
+  ctx.fillStyle = '#60a5fa';
+  ctx.font = 'bold 12px ' + varName('font-hud');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(activeNotification, canvas.width / 2, y + h / 2);
+  ctx.restore();
 }
