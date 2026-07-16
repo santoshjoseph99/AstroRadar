@@ -1113,7 +1113,7 @@ function draw() {
   // ----------------------------------------------------
   // PROCESS & INTERPOLATE AIRCRAFT
   // ----------------------------------------------------
-  const now = Date.now();
+
   
   flights.forEach(flight => {
     const { bearing, distanceKm } = getBearingAndDistance(
