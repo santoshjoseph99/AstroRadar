@@ -1149,6 +1149,8 @@ function draw() {
         alt: flight.altitude,
         speed: flight.speed,
         track: flight.track,
+        lat: flight.lat,
+        lon: flight.lon,
         squawk: flight.squawk || '',
         military: flight.military,
         x: targetCoords.x,
@@ -1166,6 +1168,8 @@ function draw() {
       interp.alt = flight.altitude;
       interp.speed = flight.speed;
       interp.track = flight.track;
+      interp.lat = flight.lat;
+      interp.lon = flight.lon;
       interp.squawk = flight.squawk || interp.squawk || '';
 
       // Easing / interpolation towards target positions (0.05 factor at 60fps)
@@ -1950,9 +1954,9 @@ let focusState = {
   durationMs: 15000 // 15 seconds spotlight tracking window
 };
 
-// Trigger every 2.5 minutes (150 seconds)
-const FOCUS_TRIGGER_INTERVAL_MS = 2.5 * 60 * 1000;
-let lastFocusCheckTime = Date.now() - FOCUS_TRIGGER_INTERVAL_MS + 10000; // Trigger 10 seconds after load
+// Trigger every 2 minutes (120 seconds) in production
+const FOCUS_TRIGGER_INTERVAL_MS = 2 * 60 * 1000;
+let lastFocusCheckTime = Date.now();
 
 function manageSpotlight(now) {
   // Sync dynamic render coordinates to calibration offsets if not initialized
@@ -1978,13 +1982,10 @@ function manageSpotlight(now) {
       
       // Toast notification overlay
       showNotification(`TARGET DETECTED: ${targetFlight.callsign || 'UNKNOWN'} (${targetFlight.type || 'N/A'})`);
-      
-      // Reset trigger check cooldown to 2.5 minutes
-      lastFocusCheckTime = now;
-    } else {
-      // No active aircraft found. Check again in 10 seconds instead of locking out for 2.5 mins
-      lastFocusCheckTime = now - FOCUS_TRIGGER_INTERVAL_MS + 10000;
     }
+    
+    // Reset trigger check cooldown to 2 minutes
+    lastFocusCheckTime = now;
   }
 
   // Camera Zoom & Pan Interpolation
@@ -1993,9 +1994,9 @@ function manageSpotlight(now) {
     const targetFlight = interpolatedFlights[focusState.targetHex];
 
     if (!targetFlight || elapsed > focusState.durationMs) {
+      console.log(`[Spotlight] Target tracking lost or window timeout. Zooming out. Reason: !targetFlight=${!targetFlight}, elapsed=${elapsed}ms`);
       focusState.active = false;
       focusState.targetHex = null;
-      console.log("[Spotlight] Target tracking lost or window timeout. Zooming out.");
     } else {
       // Calculate plane relative position
       const { bearing, distanceKm } = getBearingAndDistance(
