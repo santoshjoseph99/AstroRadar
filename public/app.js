@@ -1132,6 +1132,10 @@ function draw() {
 
     // Check elevation filter
     if (elev < calibration.minElevation) {
+      if (interpolatedFlights[flight.hex]) {
+        delete interpolatedFlights[flight.hex];
+        delete flightTrails[flight.hex];
+      }
       return; // Skip plane
     }
 
@@ -1194,6 +1198,17 @@ function draw() {
       delete flightTrails[hex];
     }
   });
+
+  // Update status bar visible flight count dynamically in real-time
+  const displayCountEl = document.getElementById('display-count');
+  if (displayCountEl) {
+    const visibleCount = Object.keys(interpolatedFlights).length;
+    if (isDemoMode) {
+      displayCountEl.textContent = `${visibleCount} Flights Simulated`;
+    } else {
+      displayCountEl.textContent = `${visibleCount} Flights Overhead`;
+    }
+  }
 
   // ----------------------------------------------------
   // DRAW FLIGHT TRAILS
