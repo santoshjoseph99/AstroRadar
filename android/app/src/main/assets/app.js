@@ -1950,9 +1950,9 @@ let focusState = {
   durationMs: 15000 // 15 seconds spotlight tracking window
 };
 
-let lastFocusCheckTime = Date.now() - FOCUS_TRIGGER_INTERVAL_MS + 10000; // Trigger 10 seconds after load
 // Trigger every 2.5 minutes (150 seconds)
 const FOCUS_TRIGGER_INTERVAL_MS = 2.5 * 60 * 1000;
+let lastFocusCheckTime = Date.now() - FOCUS_TRIGGER_INTERVAL_MS + 10000; // Trigger 10 seconds after load
 
 function manageSpotlight(now) {
   // Sync dynamic render coordinates to calibration offsets if not initialized
