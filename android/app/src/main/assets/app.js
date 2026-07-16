@@ -1950,7 +1950,7 @@ let focusState = {
   durationMs: 15000 // 15 seconds spotlight tracking window
 };
 
-let lastFocusCheckTime = Date.now();
+let lastFocusCheckTime = Date.now() - FOCUS_TRIGGER_INTERVAL_MS + 10000; // Trigger 10 seconds after load
 // Trigger every 2.5 minutes (150 seconds)
 const FOCUS_TRIGGER_INTERVAL_MS = 2.5 * 60 * 1000;
 
@@ -1978,9 +1978,13 @@ function manageSpotlight(now) {
       
       // Toast notification overlay
       showNotification(`TARGET DETECTED: ${targetFlight.callsign || 'UNKNOWN'} (${targetFlight.type || 'N/A'})`);
+      
+      // Reset trigger check cooldown to 2.5 minutes
+      lastFocusCheckTime = now;
+    } else {
+      // No active aircraft found. Check again in 10 seconds instead of locking out for 2.5 mins
+      lastFocusCheckTime = now - FOCUS_TRIGGER_INTERVAL_MS + 10000;
     }
-    // Update interval check timer
-    lastFocusCheckTime = now;
   }
 
   // Camera Zoom & Pan Interpolation
