@@ -147,7 +147,7 @@ let calibration = {
   offsetY: 0,  // in pixels
   minElevation: 5, // in degrees
   brightness: 100, // percentage
-  theme: 'classic',
+  theme: 'mono', // Default to High Contrast (mono) for clear visibility
   showStars: false,
   showConstellations: false,
   showStarNames: false,
@@ -179,6 +179,10 @@ function loadSettings() {
     try {
       const parsed = JSON.parse(saved);
       calibration = { ...calibration, ...parsed };
+      // Force 'mono' (High Contrast) as the default theme on Android TV webview if no theme is saved or classic was selected
+      if (isStandalone && (!parsed.theme || parsed.theme === 'classic')) {
+        calibration.theme = 'mono';
+      }
       console.log('Loaded calibration settings from localStorage', calibration);
     } catch (e) {
       console.error('Failed to parse saved calibration settings', e);
@@ -189,6 +193,10 @@ function loadSettings() {
       calibration.theme = 'mono';
       calibration.showDetails = true;
     }
+  }
+  
+  if (isStandalone && !calibration.theme) {
+    calibration.theme = 'mono';
   }
   syncSettingsToUI();
 }
@@ -776,32 +784,202 @@ function classifyAircraft(typeCode, callsign, squawk) {
  * Draws custom vector paths for different aircraft classes.
  * Supports fills or strokes (private outlines).
  */
-function drawAircraftShape(ctx, sizeClass, isPrivate) {
+function drawAircraftShape(ctx, sizeClass, isPrivate, isFocusedTarget = false, isMilitary = false, isEmergency = false) {
   ctx.beginPath();
   
+  if (isFocusedTarget) {
+    if (sizeClass === 'helicopter') {
+      // 1. Detailed Helicopter (with skids, vertical stabilizers, main rotor, and tail rotor)
+      ctx.arc(0, -2, 4.5, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.moveTo(0, 2.5);
+      ctx.lineTo(0, 11);
+      ctx.lineTo(2.5, 12);
+      ctx.lineTo(0, 11);
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(-3.5, 3); ctx.lineTo(-3.5, -4);
+      ctx.moveTo(3.5, 3); ctx.lineTo(3.5, -4);
+      ctx.moveTo(-3.5, 1); ctx.lineTo(3.5, 1);
+      ctx.moveTo(-3.5, -2); ctx.lineTo(3.5, -2);
+      ctx.stroke();
+      
+      // Main Rotor Blades
+      ctx.beginPath();
+      ctx.moveTo(-15, -2); ctx.lineTo(15, -2);
+      ctx.moveTo(0, -17); ctx.lineTo(0, 13);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      
+      // Tail rotor
+      ctx.beginPath();
+      ctx.moveTo(1.2, 11.5); ctx.lineTo(3.5, 9.5);
+      ctx.moveTo(2.3, 10.5); ctx.lineTo(0, 11.5);
+      ctx.stroke();
+      
+      // Belly retardant tank for CAL FIRE / Rescue helicopters
+      if (isEmergency) {
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(-2.2, -3.5, 4.4, 3.5);
+      }
+      return;
+    }
+    
+    if (sizeClass === 'small') {
+      // 2. Detailed Cessna Single Engine GA Prop (Hollow/Filled)
+      ctx.moveTo(0, -12);
+      ctx.bezierCurveTo(-1.2, -8, -1.2, -3, -1.2, 1);
+      ctx.lineTo(-13, 1);
+      ctx.lineTo(-13, 2.5);
+      ctx.lineTo(-1.2, 2.5);
+      ctx.lineTo(-1, 8);
+      ctx.lineTo(-4, 10);
+      ctx.lineTo(-4, 11);
+      ctx.lineTo(0, 9.5);
+      ctx.lineTo(4, 11);
+      ctx.lineTo(4, 10);
+      ctx.lineTo(1, 8);
+      ctx.lineTo(1.2, 2.5);
+      ctx.lineTo(13, 2.5);
+      ctx.lineTo(13, 1);
+      ctx.lineTo(1.2, 1);
+      ctx.bezierCurveTo(1.2, -3, 1.2, -8, 0, -12);
+      ctx.closePath();
+      
+      if (isPrivate) {
+        ctx.stroke();
+      } else {
+        ctx.fill();
+        ctx.stroke();
+      }
+      
+      // Front Propeller blades
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-3.5, -12.5);
+      ctx.lineTo(3.5, -12.5);
+      ctx.stroke();
+      return;
+    }
+    
+    if (isMilitary) {
+      // 3. Detailed Fighter Jet (Delta wings with wingtip missiles)
+      ctx.moveTo(0, -15);
+      ctx.lineTo(-1, -7);
+      ctx.lineTo(-10, 3);
+      ctx.lineTo(-10, 4);
+      ctx.lineTo(-1.5, 2);
+      ctx.lineTo(-1.5, 8);
+      ctx.lineTo(-5, 12);
+      ctx.lineTo(-5, 13);
+      ctx.lineTo(0, 10);
+      ctx.lineTo(5, 13);
+      ctx.lineTo(5, 12);
+      ctx.lineTo(1.5, 8);
+      ctx.lineTo(1.5, 2);
+      ctx.lineTo(10, 4);
+      ctx.lineTo(10, 3);
+      ctx.lineTo(1, -7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      
+      // Wingtip missiles
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-10, 1); ctx.lineTo(-10, 5.5);
+      ctx.moveTo(10, 1); ctx.lineTo(10, 5.5);
+      ctx.stroke();
+      return;
+    }
+    
+    if (isEmergency) {
+      // 4. Detailed Fire Air Tanker (Straight prop wings with dual engine pods)
+      ctx.moveTo(0, -14);
+      ctx.bezierCurveTo(-2, -9, -2, -3, -2, 1);
+      ctx.lineTo(-15, 1);
+      ctx.lineTo(-15, 3);
+      ctx.lineTo(-2, 3);
+      ctx.lineTo(-1.8, 10);
+      ctx.lineTo(-5.5, 12.5);
+      ctx.lineTo(-5.5, 13.5);
+      ctx.lineTo(0, 12);
+      ctx.lineTo(5.5, 13.5);
+      ctx.lineTo(5.5, 12.5);
+      ctx.lineTo(1.8, 10);
+      ctx.lineTo(2, 3);
+      ctx.lineTo(15, 3);
+      ctx.lineTo(15, 1);
+      ctx.lineTo(2, 1);
+      ctx.bezierCurveTo(2, -3, 2, -9, 0, -14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      
+      // Engine Nacelles
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fillRect(-6.5, -1, 2, 4.5);
+      ctx.fillRect(4.5, -1, 2, 4.5);
+      
+      // Props
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-8, -1); ctx.lineTo(-3, -1);
+      ctx.moveTo(3, -1); ctx.lineTo(8, -1);
+      ctx.stroke();
+      return;
+    }
+    
+    // 5. Detailed Jetliner (Swept back wings with engine pods)
+    ctx.moveTo(0, -15);
+    ctx.bezierCurveTo(-1.5, -10, -1.5, -4, -1.5, 2);
+    ctx.lineTo(-14, 5);
+    ctx.lineTo(-14, 6);
+    ctx.lineTo(-1.5, 4);
+    ctx.lineTo(-1.2, 10);
+    ctx.lineTo(-5, 13);
+    ctx.lineTo(-5, 14);
+    ctx.lineTo(0, 13);
+    ctx.lineTo(5, 14);
+    ctx.lineTo(5, 13);
+    ctx.lineTo(1.2, 10);
+    ctx.lineTo(1.5, 4);
+    ctx.lineTo(14, 6);
+    ctx.lineTo(14, 5);
+    ctx.lineTo(1.5, 2);
+    ctx.bezierCurveTo(1.5, -4, 1.5, -10, 0, -15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Engine Pods
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillRect(-5.5, 1.5, 1.5, 3);
+    ctx.fillRect(4, 1.5, 1.5, 3);
+    return;
+  }
+
+  // Fallback to standard generic shapes
   if (sizeClass === 'helicopter') {
-    // Helicopter Shape
-    // Fuselage
     ctx.arc(0, -1, 3.5, 0, 2 * Math.PI);
-    // Tail boom
     ctx.moveTo(0, 2.5);
     ctx.lineTo(0, 8);
-    // Tail rotor
     ctx.moveTo(0, 8);
     ctx.lineTo(2.5, 7.5);
     ctx.moveTo(0, 8);
     ctx.lineTo(-2.5, 8.5);
-    // Skids
     ctx.moveTo(-2.5, 2.5);
     ctx.lineTo(-2.5, -2);
     ctx.moveTo(2.5, 2.5);
     ctx.lineTo(2.5, -2);
-    // Main rotor
     ctx.moveTo(-10, -1);
     ctx.lineTo(10, -1);
   } else if (sizeClass === 'small') {
-    // Small Single Engine Prop Shape
-    // Fuselage
     ctx.moveTo(0, -7);
     ctx.lineTo(0.8, -5);
     ctx.lineTo(0.8, 5);
@@ -811,15 +989,12 @@ function drawAircraftShape(ctx, sizeClass, isPrivate) {
     ctx.lineTo(-0.8, 5);
     ctx.lineTo(-0.8, -5);
     ctx.closePath();
-    
-    // Wings
     ctx.moveTo(-8, -1.5);
     ctx.lineTo(8, -1.5);
     ctx.lineTo(8, -0.5);
     ctx.lineTo(-8, -0.5);
     ctx.closePath();
   } else if (sizeClass === 'medium') {
-    // Medium Swept Wings Jet Shape
     ctx.moveTo(0, -8);
     ctx.lineTo(0.8, -5);
     ctx.lineTo(1, -2);
@@ -838,7 +1013,6 @@ function drawAircraftShape(ctx, sizeClass, isPrivate) {
     ctx.lineTo(-0.8, -5);
     ctx.closePath();
   } else if (sizeClass === 'heavy') {
-    // Heavy widebody airliner shape
     ctx.moveTo(0, -13);
     ctx.lineTo(1.5, -9);
     ctx.lineTo(1.8, -3);
@@ -857,7 +1031,6 @@ function drawAircraftShape(ctx, sizeClass, isPrivate) {
     ctx.lineTo(-1.5, -9);
     ctx.closePath();
   } else {
-    // Large airliner (default) shape
     ctx.moveTo(0, -10);
     ctx.lineTo(1.2, -7);
     ctx.lineTo(1.4, -2.5);
@@ -878,10 +1051,8 @@ function drawAircraftShape(ctx, sizeClass, isPrivate) {
   }
 
   if (isPrivate || sizeClass === 'helicopter') {
-    // Stroke only (hollow outline) for helicopters and private GA planes
     ctx.stroke();
   } else {
-    // Solid fill + stroke border for airliners and military transports
     ctx.fill();
     ctx.stroke();
   }
@@ -1077,35 +1248,68 @@ function draw() {
   // ----------------------------------------------------
   // Force background stars and constellations ON if we are currently target locked
   if (calibration.showStars || (focusState.active && calibration.showSpotlight)) {
+    const isZoomed = focusState.active && calibration.showSpotlight;
+
     STARS.forEach(star => {
       const coords = starPositions[star.id];
       if (!coords) return;
 
-      // Radius proportional to star brightness magnitude (lower mag = brighter/larger)
-      // Clamped to be much smaller so they don't clutter the aircraft
-      const size = Math.max(0.5, (5 - star.mag) * 0.35);
+      // Unique twinkling frequency & phase offset per star
+      // Faster oscillation (100ms - 250ms period) makes the flickering very visible
+      const twinklePeriod = 110 + (star.id.charCodeAt(0) * 15) % 150; 
+      const twinklePhase = (star.id.charCodeAt(1) * 45) % 1000;
+      
+      // Oscillation factor between -1 and 1
+      const baseTwinkle = Math.sin((now + twinklePhase) / twinklePeriod);
+      
+      // Twinkle depth: brighter/closer stars (lower magnitude) have a much deeper, more intense twinkle
+      // For very bright stars, opacity dips down to 0.15. Dimmer stars remain mostly steady
+      const depth = Math.max(0.15, Math.min(0.9, (4.5 - star.mag) * 0.22)); 
+      const currentOpacity = 1.0 - (Math.abs(baseTwinkle) * depth);
+
+      // Base radius proportional to star brightness
+      let size = Math.max(0.5, (5 - star.mag) * 0.35);
+
+      // Make stars larger when zoomed in
+      if (isZoomed) {
+        size *= 2.5;
+      }
 
       // Glowing halo for very bright stars (magnitude < 1.5)
       if (star.mag < 1.5 && styles.starGlow !== 'transparent') {
+        ctx.save();
+        ctx.globalAlpha = currentOpacity;
         ctx.beginPath();
         ctx.arc(coords.x, coords.y, size * 1.8, 0, 2 * Math.PI);
         ctx.fillStyle = styles.starGlow;
         ctx.fill();
+        ctx.restore();
       }
 
       // Star core
+      ctx.save();
+      ctx.globalAlpha = currentOpacity;
       ctx.beginPath();
       ctx.arc(coords.x, coords.y, size, 0, 2 * Math.PI);
       ctx.fillStyle = styles.star;
       ctx.fill();
+      ctx.restore();
 
       // Star label
-      if ((calibration.showStarNames || (focusState.active && calibration.showSpotlight)) && star.mag < 2.5) { // Only label brighter stars to avoid clutter
+      if ((calibration.showStarNames || isZoomed) && star.mag < 2.5) { // Only label brighter stars to avoid clutter
         ctx.fillStyle = styles.starText;
-        ctx.font = '10px ' + varName('font-ui');
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(star.name, coords.x + size + 3, coords.y + size + 2);
+        if (isZoomed) {
+          // Bigger, bold font for high visibility on zoomed ceiling projection
+          ctx.font = 'bold 13px ' + varName('font-ui');
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(star.name, coords.x + size + 5, coords.y + size + 3);
+        } else {
+          ctx.font = '10px ' + varName('font-ui');
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(star.name, coords.x + size + 3, coords.y + size + 2);
+        }
       }
     });
   }
@@ -1216,7 +1420,7 @@ function draw() {
   // ----------------------------------------------------
   // DRAW FLIGHT TRAILS
   // ----------------------------------------------------
-  if (calibration.showTrails) {
+  if (calibration.showTrails && !(focusState.active && calibration.showSpotlight)) {
     Object.keys(flightTrails).forEach(hex => {
       const trail = flightTrails[hex];
       const flightInfo = interpolatedFlights[hex];
@@ -1286,6 +1490,8 @@ function draw() {
       ctx.fill();
     }
 
+    const isFocusedTarget = focusState.active && focusState.targetHex === hex && calibration.showSpotlight;
+
     // Draw custom airplane class vector marker
     ctx.save();
     ctx.translate(flight.x, flight.y);
@@ -1294,8 +1500,12 @@ function draw() {
     const totalRotationRad = (flight.track + calibration.rotation) * Math.PI / 180;
     ctx.rotate(totalRotationRad);
 
-    // Apply scaling based on altitude and size
-    ctx.scale(altFactor, altFactor);
+    // Apply scaling based on altitude and size (scale up 3.0x if focused target to see the detailed vector silhouette)
+    if (isFocusedTarget) {
+      ctx.scale(altFactor * 3.0, altFactor * 3.0);
+    } else {
+      ctx.scale(altFactor, altFactor);
+    }
 
     // Apply colors
     if (isEmergency) {
@@ -1309,48 +1519,12 @@ function draw() {
     
     ctx.lineWidth = 1.2;
     
-    // Draw class-specific shape
-    drawAircraftShape(ctx, sizeClass, isPrivate);
+    // Draw class-specific shape (highly detailed shape outlines if target locked!)
+    drawAircraftShape(ctx, sizeClass, isPrivate, isFocusedTarget, flight.military, isEmergency);
 
     ctx.restore();
 
-    // Draw tactical HUD bracket corners around the active target spotlight
-    if (focusState.active && focusState.targetHex === hex && calibration.showSpotlight) {
-      ctx.strokeStyle = '#ef4444'; // Flashing neon red alert
-      ctx.lineWidth = 1.5;
-      const r = 16 * altFactor;
-      
-      ctx.beginPath();
-      // Top-Left corner
-      ctx.moveTo(flight.x - r, flight.y - r + 5);
-      ctx.lineTo(flight.x - r, flight.y - r);
-      ctx.lineTo(flight.x - r + 5, flight.y - r);
-      
-      // Top-Right corner
-      ctx.moveTo(flight.x + r - 5, flight.y - r);
-      ctx.lineTo(flight.x + r, flight.y - r);
-      ctx.lineTo(flight.x + r, flight.y - r + 5);
-      
-      // Bottom-Left corner
-      ctx.moveTo(flight.x - r, flight.y + r - 5);
-      ctx.lineTo(flight.x - r, flight.y + r);
-      ctx.lineTo(flight.x - r + 5, flight.y + r);
-      
-      // Bottom-Right corner
-      ctx.moveTo(flight.x + r - 5, flight.y + r);
-      ctx.lineTo(flight.x + r, flight.y + r);
-      ctx.lineTo(flight.x + r, flight.y + r - 5);
-      ctx.stroke();
 
-      // Blinking TARGET LOCK text
-      if (Math.floor(now / 300) % 2 === 0) {
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 9px ' + varName('font-hud');
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText('TARGET LOCK', flight.x, flight.y - r - 6);
-      }
-    }
 
     // Draw labels (Details: Callsign, Type, Route, Altitude, Speed)
     if (calibration.showDetails) {
@@ -1965,9 +2139,9 @@ let focusState = {
   durationMs: 15000 // 15 seconds spotlight tracking window
 };
 
-// Trigger check interval: 10 seconds for dev/testing (will check/zoom frequently)
-const FOCUS_TRIGGER_INTERVAL_MS = 10 * 1000;
-let lastFocusCheckTime = Date.now() - FOCUS_TRIGGER_INTERVAL_MS + 2000; // Trigger 2 seconds after load
+// Trigger every 2 minutes (120 seconds) in production
+const FOCUS_TRIGGER_INTERVAL_MS = 2 * 60 * 1000;
+let lastFocusCheckTime = Date.now();
 
 function manageSpotlight(now) {
   // Sync dynamic render coordinates to calibration offsets if not initialized
@@ -1993,13 +2167,10 @@ function manageSpotlight(now) {
       
       // Toast notification overlay
       showNotification(`TARGET DETECTED: ${targetFlight.callsign || 'UNKNOWN'} (${targetFlight.type || 'N/A'})`);
-      
-      // Reset trigger check cooldown to 10 seconds
-      lastFocusCheckTime = now;
-    } else {
-      // No active aircraft found. Try again in 3 seconds.
-      lastFocusCheckTime = now - FOCUS_TRIGGER_INTERVAL_MS + 3000;
     }
+    
+    // Reset trigger check cooldown to 2 minutes
+    lastFocusCheckTime = now;
   }
 
   // Camera Zoom & Pan Interpolation
@@ -2118,7 +2289,7 @@ function drawTargetHud(ctx, centerX, centerY, baseRadius, styles) {
 
   // Draw background panel
   ctx.fillStyle = 'rgba(10, 16, 44, 0.88)';
-  ctx.strokeStyle = '#ef4444'; // Alert red borders
+  ctx.strokeStyle = '#3b82f6'; // Scientific blue border
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   if (ctx.roundRect) {
@@ -2130,22 +2301,14 @@ function drawTargetHud(ctx, centerX, centerY, baseRadius, styles) {
   ctx.stroke();
 
   // Header Title
-  ctx.fillStyle = '#ef4444';
+  ctx.fillStyle = '#60a5fa'; // Soft blue
   ctx.font = 'bold 11px ' + varName('font-hud');
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('⚡ TARGET ACQUIRED', x + 15, y + 15);
-
-  // Blinking lock status light
-  if (Math.floor(Date.now() / 400) % 2 === 0) {
-    ctx.beginPath();
-    ctx.arc(x + w - 20, y + 20, 4, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ef4444';
-    ctx.fill();
-  }
+  ctx.fillText('📡 SCANNING DETAILS', x + 15, y + 15);
 
   // Divider line
-  ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+  ctx.strokeStyle = 'rgba(96, 165, 250, 0.2)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(x + 15, y + 34);
