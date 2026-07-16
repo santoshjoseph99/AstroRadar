@@ -1184,10 +1184,9 @@ function draw() {
       }
       
       const trail = flightTrails[flight.hex];
-      const interp = interpolatedFlights[flight.hex];
       
-      // Store current interpolated position in trail
-      trail.push({ x: interp.x, y: interp.y, timestamp: now });
+      // Store current raw elevation and bearing in trail for dynamic canvas projection
+      trail.push({ elev, bearing, timestamp: now });
 
       // Clean trails older than 60 seconds
       flightTrails[flight.hex] = trail.filter(pt => (now - pt.timestamp) < 60000);
@@ -1224,9 +1223,18 @@ function draw() {
       if (!flightInfo || trail.length < 2) return;
 
       ctx.beginPath();
-      ctx.moveTo(trail[0].x, trail[0].y);
-      for (let i = 1; i < trail.length; i++) {
-        ctx.lineTo(trail[i].x, trail[i].y);
+      let first = true;
+      for (let i = 0; i < trail.length; i++) {
+        const pt = trail[i];
+        const coords = getCanvasCoordinates(pt.elev, pt.bearing, centerX, centerY, baseRadius);
+        if (coords) {
+          if (first) {
+            ctx.moveTo(coords.x, coords.y);
+            first = false;
+          } else {
+            ctx.lineTo(coords.x, coords.y);
+          }
+        }
       }
 
       ctx.strokeStyle = flightInfo.military ? styles.milFlightTrail : styles.flightTrail;
@@ -1413,6 +1421,9 @@ function draw() {
       });
     }
   });
+
+  // Draw premium radar HUD target panel
+  drawTargetHud(ctx, centerX, centerY, baseRadius, styles);
 
   // Render active toast notifications on top of screen
   drawNotifications();
@@ -2022,8 +2033,8 @@ function manageSpotlight(now) {
       const rotX = relX * Math.cos(rotRad) - relY * Math.sin(rotRad);
       const rotY = relX * Math.sin(rotRad) + relY * Math.cos(rotRad);
 
-      // Target Scale: Zoom in by 2.2x of user preferred base scale
-      const targetScale = calibration.scale * 2.2;
+      // Target Scale: Zoom in deeply by 5.0x of user preferred base scale
+      const targetScale = calibration.scale * 5.0;
       // Centered at screen center, so offsets must negate rotation coordinates
       const targetOffsetX = -rotX * targetScale;
       const targetOffsetY = -rotY * targetScale;
@@ -2083,5 +2094,89 @@ function drawNotifications() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(activeNotification, canvas.width / 2, y + h / 2);
+  ctx.restore();
+}
+
+// Draw a premium, detailed HUD block for target tracking
+function drawTargetHud(ctx, centerX, centerY, baseRadius, styles) {
+  if (!focusState.active || !calibration.showSpotlight) return;
+  const targetFlight = interpolatedFlights[focusState.targetHex];
+  if (!targetFlight) return;
+
+  const { bearing, distanceKm } = getBearingAndDistance(
+    config.latitude, 
+    config.longitude, 
+    targetFlight.lat, 
+    targetFlight.lon
+  );
+
+  ctx.save();
+  const w = 245;
+  const h = 145;
+  const x = 30;
+  const y = canvas.height - h - 30;
+
+  // Draw background panel
+  ctx.fillStyle = 'rgba(10, 16, 44, 0.88)';
+  ctx.strokeStyle = '#ef4444'; // Alert red borders
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, 8);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  // Header Title
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 11px ' + varName('font-hud');
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('⚡ TARGET ACQUIRED', x + 15, y + 15);
+
+  // Blinking lock status light
+  if (Math.floor(Date.now() / 400) % 2 === 0) {
+    ctx.beginPath();
+    ctx.arc(x + w - 20, y + 20, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+  }
+
+  // Divider line
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 15, y + 34);
+  ctx.lineTo(x + w - 15, y + 34);
+  ctx.stroke();
+
+  // Plane data details
+  ctx.font = '10px ' + varName('font-hud');
+  const labels = [
+    { label: 'IDENT / REG', value: `${targetFlight.callsign || 'N/A'} [${targetFlight.registration || 'N/A'}]` },
+    { label: 'AIRCRAFT TYPE', value: targetFlight.type || 'UNKNOWN' },
+    { label: 'ALTITUDE', value: `${targetFlight.alt.toLocaleString()} FT (${Math.round(targetFlight.alt / 100)}FL)` },
+    { label: 'SPEED / HEADING', value: `${targetFlight.speed ? targetFlight.speed + ' KTS' : 'N/A'} · ${targetFlight.track}°` },
+    { label: 'SQUAWK', value: targetFlight.squawk || '1200' },
+    { label: 'RANGE / AZIMUTH', value: `${distanceKm ? distanceKm.toFixed(1) + ' KM' : 'N/A'} · ${bearing ? Math.round(bearing) + '°' : 'N/A'}` }
+  ];
+
+  // Look up route if available
+  const route = routeCacheMap.get((targetFlight.callsign || '').toUpperCase());
+  if (route && route.found && route.origin && route.destination) {
+    labels.splice(2, 0, { label: 'ROUTE', value: `${route.origin} ➔ ${route.destination}` });
+  }
+
+  let textY = y + 42;
+  labels.forEach(item => {
+    ctx.fillStyle = '#64748b'; // label name color
+    ctx.fillText(item.label, x + 15, textY);
+    ctx.fillStyle = '#ffffff'; // value color
+    ctx.fillText(item.value, x + 115, textY);
+    textY += 14;
+  });
+
   ctx.restore();
 }
