@@ -1055,13 +1055,13 @@ function draw() {
       if (!coords) return;
 
       // Radius proportional to star brightness magnitude (lower mag = brighter/larger)
-      // Sirius is -1.46 (large), Polaris is 1.97 (medium), magnitude 5 is small
-      const size = Math.max(1, (5 - star.mag) * 0.95);
+      // Clamped to be much smaller so they don't clutter the aircraft
+      const size = Math.max(0.5, (5 - star.mag) * 0.35);
 
       // Glowing halo for very bright stars (magnitude < 1.5)
       if (star.mag < 1.5 && styles.starGlow !== 'transparent') {
         ctx.beginPath();
-        ctx.arc(coords.x, coords.y, size * 2.5, 0, 2 * Math.PI);
+        ctx.arc(coords.x, coords.y, size * 1.8, 0, 2 * Math.PI);
         ctx.fillStyle = styles.starGlow;
         ctx.fill();
       }
